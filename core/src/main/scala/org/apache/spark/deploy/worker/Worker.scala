@@ -476,6 +476,8 @@ private[deploy] class Worker(
             workerUri,
             conf,
             appLocalDirs, ExecutorState.RUNNING)
+
+          // 把executorRunner加入本地缓存
           executors(appId + "/" + execId) = manager
           manager.start()
           coresUsed += cores_
@@ -656,8 +658,8 @@ private[deploy] class Worker(
     coresUsed -= driver.driverDesc.cores
   }
 
-  private[worker] def handleExecutorStateChanged(executorStateChanged: ExecutorStateChanged):
-    Unit = {
+  private[worker] def handleExecutorStateChanged(executorStateChanged: ExecutorStateChanged):Unit = {
+    // 通知master executor状态改变
     sendToMaster(executorStateChanged)
     val state = executorStateChanged.state
     if (ExecutorState.isFinished(state)) {
@@ -670,6 +672,7 @@ private[deploy] class Worker(
           logInfo("Executor " + fullId + " finished with state " + state +
             message.map(" message " + _).getOrElse("") +
             exitStatus.map(" exitStatus " + _).getOrElse(""))
+          // 从内存中清除executorsInfo
           executors -= fullId
           finishedExecutors(fullId) = executor
           trimFinishedExecutorsIfNecessary()
@@ -680,6 +683,7 @@ private[deploy] class Worker(
             message.map(" message " + _).getOrElse("") +
             exitStatus.map(" exitStatus " + _).getOrElse(""))
       }
+      // 此appId的executor都不存在于当前worker的话
       maybeCleanupApplication(appId)
     }
   }

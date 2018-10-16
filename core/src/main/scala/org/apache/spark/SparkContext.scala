@@ -813,6 +813,9 @@ class SparkContext(config: SparkConf) extends Logging {
   /**
    * Read a text file from HDFS, a local file system (available on all nodes), or any
    * Hadoop-supported file system URI, and return it as an RDD of Strings.
+    *
+    * 首先，hadoopFile()方法的调用，会创建一个HadoopRDD，其中的元素，其实是(key,value) pair
+    * HadoopRDD会被广播到所有worker
    */
   def textFile(
       path: String,

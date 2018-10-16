@@ -37,7 +37,10 @@ import org.apache.spark.util.{Clock, ShutdownHookManager, SystemClock, Utils}
 /**
  * Manages the execution of one driver, including automatically restarting the driver on failure.
  * This is currently only used in standalone cluster deploy mode.
+  *
+  * 管理一个Driver的执行，包括在driver失败时自动重启driver
  */
+
 private[deploy] class DriverRunner(
     conf: SparkConf,
     val driverId: String,
@@ -88,6 +91,9 @@ private[deploy] class DriverRunner(
           }
 
           // prepare driver jars and run driver
+          // 进行一系列准备
+          // 启动进程以后，等待进程执行完成
+          // exitCode = 0 时进程正常结束
           val exitCode = prepareAndRunDriver()
 
           // set final state depending on if forcibly killed and process exit code
@@ -147,6 +153,7 @@ private[deploy] class DriverRunner(
    * Will throw an exception if there are errors downloading the jar.
    */
   private def downloadUserJar(driverDir: File): String = {
+    // 从hdfs下载
     val jarFileName = new URI(driverDesc.jarUrl).getPath.split("/").last
     val localJarFile = new File(driverDir, jarFileName)
     if (!localJarFile.exists()) { // May already exist if running multiple workers on one node
@@ -168,7 +175,9 @@ private[deploy] class DriverRunner(
   }
 
   private[worker] def prepareAndRunDriver(): Int = {
+    // 1、创建driver工作目录 (workDir,driverId)
     val driverDir = createWorkingDirectory()
+    // 2、往driver工作目录下载jar包,就是我们用maven或者idea打我jar包
     val localJarFilename = downloadUserJar(driverDir)
 
     def substituteVariables(argument: String): String = argument match {
