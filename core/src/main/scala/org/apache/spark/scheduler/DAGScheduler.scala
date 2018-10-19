@@ -850,6 +850,7 @@ class DAGScheduler(
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
       // HadoopRDD whose underlying HDFS files have been deleted.
+
       // 创建一个stage对象，并且将DAGScheduler内部的内存缓存中
       finalStage = createResultStage(finalRDD, func, partitions, jobId, callSite)
     } catch {
@@ -858,11 +859,10 @@ class DAGScheduler(
         listener.jobFailed(e)
         return
     }
-    // 第二步，用fianlStage，创建一个Job
+    // 第二步，用finalStage，创建一个Job
     val job = new ActiveJob(jobId, finalStage, callSite, listener, properties)
     clearCacheLocs()
-    logInfo("Got job %s (%s) with %d output partitions".format(
-      job.jobId, callSite.shortForm, partitions.length))
+    logInfo("Got job %s (%s) with %d output partitions".format(job.jobId, callSite.shortForm, partitions.length))
     logInfo("Final stage: " + finalStage + " (" + finalStage.name + ")")
     logInfo("Parents of final stage: " + finalStage.parents)
     logInfo("Missing parents: " + getMissingParentStages(finalStage))
@@ -1054,7 +1054,7 @@ class DAGScheduler(
         case stage: ShuffleMapStage =>
           partitionsToCompute.map { id =>
             // 给每一个partition创建一个task
-            // 给每个task计算最佳位置
+            // 给每个task计算最佳位置,从缓存的角度去找
             val locs = taskIdToLocations(id)
             val part = stage.rdd.partitions(id)
             // 然后对于finalStage之外的stage,它的isShuffleMap都是true
@@ -1090,6 +1090,7 @@ class DAGScheduler(
       logDebug("New pending partitions: " + stage.pendingPartitions)
 
       // 最后，针对stage的task，创建TaskSet对象，调用TaskSchedual的submitTasks()方法提交TaskSet
+      // 默认情况下，我们的standAlone模式下,是使用的TaskSchedulerImpl
       taskScheduler.submitTasks(new TaskSet(
         tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties))
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())

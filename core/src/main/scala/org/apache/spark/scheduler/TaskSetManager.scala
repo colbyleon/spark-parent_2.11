@@ -33,6 +33,10 @@ import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
 
 /**
+  * 在TaskScheduleImpl中，对一个单独的TaskSet进行任务调度，这个类负责追踪每个...看英文
+  */
+
+/**
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
  * each task, retries tasks if they fail (up to a limited number of times), and
  * handles locality-aware scheduling for this TaskSet via delay scheduling. The main interfaces
