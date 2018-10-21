@@ -74,6 +74,9 @@ private[spark] class ShuffleMapTask(
     if (locs == null) Nil else locs.toSet.toSeq
   }
 
+  /**
+    * 非常重要的一点就是shuffleMapTask的runTask方法有MapStatus返回值
+    */
   override def runTask(context: TaskContext): MapStatus = {
     // Deserialize the RDD using the broadcast variable.
     val threadMXBean = ManagementFactory.getThreadMXBean
@@ -81,6 +84,7 @@ private[spark] class ShuffleMapTask(
     val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
+    // 对相关数据做反序列化
     val ser = SparkEnv.get.closureSerializer.newInstance()
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
@@ -91,9 +95,17 @@ private[spark] class ShuffleMapTask(
 
     var writer: ShuffleWriter[Any, Any] = null
     try {
+      // 从shuffleManager中获取ShuffleWriter
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
+
+      // 最最重要的一行代码
+      // 核心逻辑在iterator()方法中，执行了我们自己定义的逻辑
+      // 返回的数据都是通过ShuffleWriter经过HashPartitioner进行分区之后写入自己对应的分区
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
+      // 最后返回结果，MapperStatus
+      // 里面封装了shuffleMapTask计算后的数据，其实就是BlockManager相关的信息
+      // BlockManager是Spark底层的内存、数据、磁盘数据管理的组件
       writer.stop(success = true).get
     } catch {
       case e: Exception =>

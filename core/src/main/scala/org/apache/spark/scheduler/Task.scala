@@ -85,6 +85,8 @@ private[spark] abstract class Task[T](
       localProperties,
       metricsSystem,
       metrics)
+    // task的执行上下文，里面记录一些全局性的数据
+    // 比如task重试了几次包括task属于哪个stage，task要处理的是哪个rdd的哪个partition等
     TaskContext.setTaskContext(context)
     taskThread = Thread.currentThread()
 
@@ -95,6 +97,10 @@ private[spark] abstract class Task[T](
     new CallerContext("TASK", appId, appAttemptId, jobId, Option(stageId), Option(stageAttemptId),
       Option(taskAttemptId), Option(attemptNumber)).setCurrentContext()
 
+    /**
+      * 调用到了抽象方法，
+      * shuffleMapTask,ResultTask 有不同的实现方法
+      */
     try {
       runTask(context)
     } catch {

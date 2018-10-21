@@ -22,6 +22,10 @@ import scala.reflect.ClassTag
 import org.apache.spark.{NarrowDependency, Partition, TaskContext}
 import org.apache.spark.annotation.DeveloperApi
 
+/**
+  * 代表啥？
+  * index -> parentPartition? 映射？
+  */
 private[spark] class PartitionPruningRDDPartition(idx: Int, val parentSplit: Partition)
   extends Partition {
   override val index = idx
@@ -31,6 +35,8 @@ private[spark] class PartitionPruningRDDPartition(idx: Int, val parentSplit: Par
 /**
  * Represents a dependency between the PartitionPruningRDD and its parent. In this
  * case, the child RDD contains a subset of partitions of the parents'.
+ *
+ * 裁剪分区 比如 对rdd用了filter 只保留偶数，如果分区也按奇偶规则划分，那么把奇数分区裁剪掉，就只依赖了父类的部分分区?
  */
 private[spark] class PruneDependency[T](rdd: RDD[T], partitionFilterFunc: Int => Boolean)
   extends NarrowDependency[T](rdd) {

@@ -135,7 +135,11 @@ abstract class RDD[T: ClassTag](
    */
   protected def getPreferredLocations(split: Partition): Seq[String] = Nil
 
-  /** Optionally overridden by subclasses to specify how they are partitioned. */
+  /**
+    * Optionally overridden by subclasses to specify how they are partitioned.
+    * 分区器
+    * 内部 key -> partition 的算法，可以自己定义，默认是hash
+    */
   @transient val partitioner: Option[Partitioner] = None
 
   // =======================================================================
@@ -159,7 +163,7 @@ abstract class RDD[T: ClassTag](
 
   /**
    * Mark this RDD for persisting using the specified level.
-   *
+   *  只是标记storageLevel不会有实质行动，因为只有在action时才会行动
    * @param newLevel the target storage level
    * @param allowOverride whether to override any existing level with the new one
    */
@@ -183,6 +187,8 @@ abstract class RDD[T: ClassTag](
    * Set this RDD's storage level to persist its values across operations after the first time
    * it is computed. This can only be used to assign a new storage level if the RDD does not
    * have a storage level set yet. Local checkpointing is an exception.
+    *
+    * 用户显示的第二次调用会覆盖之前的缓存
    */
   def persist(newLevel: StorageLevel): this.type = {
     if (isLocallyCheckpointed) {
@@ -213,6 +219,8 @@ abstract class RDD[T: ClassTag](
    */
   def unpersist(blocking: Boolean = true): this.type = {
     logInfo("Removing RDD " + id + " from persistence list")
+    // sc会从blockManageMaster中删除相应的信息
+    // 并全用监听总线发送给所有监听器
     sc.unpersistRDD(id, blocking)
     storageLevel = StorageLevel.NONE
     this
@@ -281,9 +289,12 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    // 如果持久化过RDD
     if (storageLevel != StorageLevel.NONE) {
+      // 优先尝试使用CacheManage去获取数据
       getOrCompute(split, context)
     } else {
+      // 进行rdd partition的计算
       computeOrReadCheckpoint(split, context)
     }
   }

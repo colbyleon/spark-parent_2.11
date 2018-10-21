@@ -21,32 +21,32 @@ import java.net.URL
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
-import scala.collection.mutable
-import scala.util.{Failure, Success}
-import scala.util.control.NonFatal
-
-import org.apache.spark._
 import org.apache.spark.TaskState.TaskState
+import org.apache.spark._
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.deploy.worker.WorkerWatcher
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc._
-import org.apache.spark.scheduler.{ExecutorLossReason, TaskDescription}
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
+import org.apache.spark.scheduler.{ExecutorLossReason, TaskDescription}
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.{ThreadUtils, Utils}
+
+import scala.collection.mutable
+import scala.util.control.NonFatal
+import scala.util.{Failure, Success}
 
 /**
   * worker中为application启动的executor，实际上是启动了这个CoarseGrainedExecutorBackend进程
   */
 private[spark] class CoarseGrainedExecutorBackend(
-    override val rpcEnv: RpcEnv,
-    driverUrl: String,
-    executorId: String,
-    hostname: String,
-    cores: Int,
-    userClassPath: Seq[URL],
-    env: SparkEnv)
+                                                   override val rpcEnv: RpcEnv,
+                                                   driverUrl: String,
+                                                   executorId: String,
+                                                   hostname: String,
+                                                   cores: Int,
+                                                   userClassPath: Seq[URL],
+                                                   env: SparkEnv)
   extends ThreadSafeRpcEndpoint with ExecutorBackend with Logging {
 
   private[this] val stopping = new AtomicBoolean(false)
@@ -57,17 +57,19 @@ private[spark] class CoarseGrainedExecutorBackend(
   // to be changed so that we don't share the serializer instance across threads
   private[this] val ser: SerializerInstance = env.closureSerializer.newInstance()
 
+  // endpoint的启动监听方法
   override def onStart() {
     logInfo("Connecting to driver: " + driverUrl)
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
+
       // 启动就去找driver注册executor
       ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls))
     }(ThreadUtils.sameThread).onComplete {
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       case Success(msg) =>
-        // Always receive `true`. Just ignore it
+      // Always receive `true`. Just ignore it
       case Failure(e) =>
         exitExecutor(1, s"Cannot register with driver: $driverUrl", e, notifyDriver = false)
     }(ThreadUtils.sameThread)
@@ -145,16 +147,17 @@ private[spark] class CoarseGrainedExecutorBackend(
   override def statusUpdate(taskId: Long, state: TaskState, data: ByteBuffer) {
     val msg = StatusUpdate(executorId, taskId, state, data)
     driver match {
+      // 发送到CoarseGrainedSchedulerBackend
       case Some(driverRef) => driverRef.send(msg)
       case None => logWarning(s"Drop $msg because has not yet connected to driver")
     }
   }
 
   /**
-   * This function can be overloaded by other child classes to handle
-   * executor exits differently. For e.g. when an executor goes down,
-   * back-end may not want to take the parent process down.
-   */
+    * This function can be overloaded by other child classes to handle
+    * executor exits differently. For e.g. when an executor goes down,
+    * back-end may not want to take the parent process down.
+    */
   protected def exitExecutor(code: Int,
                              reason: String,
                              throwable: Throwable = null,
@@ -181,13 +184,13 @@ private[spark] class CoarseGrainedExecutorBackend(
 private[spark] object CoarseGrainedExecutorBackend extends Logging {
 
   private def run(
-      driverUrl: String,
-      executorId: String,
-      hostname: String,
-      cores: Int,
-      appId: String,
-      workerUrl: Option[String],
-      userClassPath: Seq[URL]) {
+                   driverUrl: String,
+                   executorId: String,
+                   hostname: String,
+                   cores: Int,
+                   appId: String,
+                   workerUrl: Option[String],
+                   userClassPath: Seq[URL]) {
 
     Utils.initDaemon(log)
 
@@ -295,17 +298,17 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
     // scalastyle:off println
     System.err.println(
       """
-      |Usage: CoarseGrainedExecutorBackend [options]
-      |
-      | Options are:
-      |   --driver-url <driverUrl>
-      |   --executor-id <executorId>
-      |   --hostname <hostname>
-      |   --cores <cores>
-      |   --app-id <appid>
-      |   --worker-url <workerUrl>
-      |   --user-class-path <url>
-      |""".stripMargin)
+        |Usage: CoarseGrainedExecutorBackend [options]
+        |
+        | Options are:
+        |   --driver-url <driverUrl>
+        |   --executor-id <executorId>
+        |   --hostname <hostname>
+        |   --cores <cores>
+        |   --app-id <appid>
+        |   --worker-url <workerUrl>
+        |   --user-class-path <url>
+        |""".stripMargin)
     // scalastyle:on println
     System.exit(1)
   }

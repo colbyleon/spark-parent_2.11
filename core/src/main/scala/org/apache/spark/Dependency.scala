@@ -27,6 +27,10 @@ import org.apache.spark.shuffle.ShuffleHandle
 /**
  * :: DeveloperApi ::
  * Base class for dependencies.
+  *
+  * RDD#getDepenDencys
+  * 一个RDD可能依赖于多个父RDD
+  * Dependency代表与其中某一个父RDD的依赖关系？
  */
 @DeveloperApi
 abstract class Dependency[T] extends Serializable {
@@ -38,6 +42,8 @@ abstract class Dependency[T] extends Serializable {
  * :: DeveloperApi ::
  * Base class for dependencies where each partition of the child RDD depends on a small number
  * of partitions of the parent RDD. Narrow dependencies allow for pipelined execution.
+ *
+ * 子RDD的每个分区依赖于父RDD的少量分区
  */
 @DeveloperApi
 abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
@@ -107,6 +113,8 @@ class OneToOneDependency[T](rdd: RDD[T]) extends NarrowDependency[T](rdd) {
 /**
  * :: DeveloperApi ::
  * Represents a one-to-one dependency between ranges of partitions in the parent and child RDDs.
+  *
+  * 分区之间还是一对一的依赖关系不过 索引号有偏差?
  * @param rdd the parent RDD
  * @param inStart the start of the range in the parent RDD
  * @param outStart the start of the range in the child RDD

@@ -47,6 +47,7 @@ class BlockManagerMasterEndpoint(
   private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
 
   // Mapping from executor ID to block manager ID.
+  // executorId -> manageId
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
 
   // Mapping from block id to the set of block managers that have the block.
@@ -311,6 +312,8 @@ class BlockManagerMasterEndpoint(
 
   /**
    * Returns the BlockManagerId with topology information populated, if available.
+    * 注册后返回一个BlockManageId
+    *
    */
   private def register(
       idWithoutTopologyInfo: BlockManagerId,
@@ -336,7 +339,7 @@ class BlockManagerMasterEndpoint(
       }
       logInfo("Registering block manager %s with %s RAM, %s".format(
         id.hostPort, Utils.bytesToString(maxMemSize), id))
-
+      // 注册
       blockManagerIdByExecutor(id.executorId) = id
 
       blockManagerInfo(id) = new BlockManagerInfo(
@@ -346,6 +349,9 @@ class BlockManagerMasterEndpoint(
     id
   }
 
+  /**
+    * blockManage发生变化时，需要更新blockInfo
+    */
   private def updateBlockInfo(
       blockManagerId: BlockManagerId,
       blockId: BlockId,
@@ -369,7 +375,8 @@ class BlockManagerMasterEndpoint(
     }
 
     blockManagerInfo(blockManagerId).updateBlockInfo(blockId, storageLevel, memSize, diskSize)
-
+    // 每一个block可能会在多个BlockManager上面
+    // 例如：如果将StorageLevel设置成带着_2的，会复制一份到其它BlockManager上
     var locations: mutable.HashSet[BlockManagerId] = null
     if (blockLocations.containsKey(blockId)) {
       locations = blockLocations.get(blockId)
@@ -437,9 +444,12 @@ object BlockStatus {
   def empty: BlockStatus = BlockStatus(StorageLevel.NONE, memSize = 0L, diskSize = 0L)
 }
 
+/**
+  * BlockManage的无数据
+  */
 private[spark] class BlockManagerInfo(
     val blockManagerId: BlockManagerId,
-    timeMs: Long,
+    timeMs: Long, // 注册时间，更新时间？
     val maxMem: Long,
     val slaveEndpoint: RpcEndpointRef)
   extends Logging {
@@ -503,6 +513,7 @@ private[spark] class BlockManagerInfo(
       if (!blockId.isBroadcast && blockStatus.isCached) {
         _cachedBlocks += blockId
       }
+      // 如果StorageLevel是非法的，而且之前保存过这个blockId那么删除
     } else if (_blocks.containsKey(blockId)) {
       // If isValid is not true, drop the block.
       val blockStatus: BlockStatus = _blocks.get(blockId)

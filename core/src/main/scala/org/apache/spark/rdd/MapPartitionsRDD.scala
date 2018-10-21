@@ -23,10 +23,13 @@ import org.apache.spark.{Partition, TaskContext}
 
 /**
  * An RDD that applies the provided function to every partition of the parent RDD.
+ *
+ * f 返回this RDD的计算结果
+ * extends RDD[U](prev): one-to-one dependency
  */
 private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
     var prev: RDD[T],
-    f: (TaskContext, Int, Iterator[T]) => Iterator[U],  // (TaskContext, partition index, iterator)
+    f: (TaskContext, Int, Iterator[T]) => Iterator[U], // (TaskContext, partition index, iterator(父RDD的计算结果))
     preservesPartitioning: Boolean = false)
   extends RDD[U](prev) {
 
@@ -34,7 +37,14 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
 
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
+  /**
+    * compute实际上就是针对RDD中的某个partition执行我们指定的RDD的某个算子和函数，并返回新的RDD的partition数据
+    * 什么是算子和函数
+    * 这个f 就是我们自己定义的算子和函数
+    * spark对f 进行了封装，并实现了一些其它逻辑
+    */
   override def compute(split: Partition, context: TaskContext): Iterator[U] =
+  // 先计算其父RDD的iterator取得数据，按分区id分成若干个task
     f(context, split.index, firstParent[T].iterator(split, context))
 
   override def clearDependencies() {

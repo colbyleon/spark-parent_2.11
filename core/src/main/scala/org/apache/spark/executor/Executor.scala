@@ -82,6 +82,7 @@ private[spark] class Executor(
   }
 
   // Start worker thread pool
+  // 启动一个缓存线程池 Executors.newCachedThreadPool(threadFactory)
   private val threadPool = ThreadUtils.newDaemonCachedThreadPool("Executor task launch worker")
   private val executorSource = new ExecutorSource(threadPool, executorId)
 
@@ -184,6 +185,9 @@ private[spark] class Executor(
     ManagementFactory.getGarbageCollectorMXBeans.asScala.map(_.getCollectionTime).sum
   }
 
+  /**
+    * task运行逻辑在此
+    */
   class TaskRunner(
       execBackend: ExecutorBackend,
       val taskId: Long,
@@ -247,6 +251,7 @@ private[spark] class Executor(
       startGCTime = computeTotalGcTime()
 
       try {
+        // 反序列化
         val (taskFiles, taskJars, taskProps, taskBytes) =
           Task.deserializeWithDependencies(serializedTask)
 
@@ -255,6 +260,9 @@ private[spark] class Executor(
         Executor.taskDeserializationProps.set(taskProps)
 
         updateDependencies(taskFiles, taskJars)
+        // 为什么要用到classLoader
+        // 因为classLoader可以干很多东西，比如用反射来动态加载一个类，然后创建这个类的对象
+        // 还可以指定上下文相关资源，进行加载和读取
         task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
         task.localProperties = taskProps
         task.setTaskMemoryManager(taskMemoryManager)
@@ -279,6 +287,10 @@ private[spark] class Executor(
         } else 0L
         var threwException = true
         val value = try {
+          // 这里的res，对于shuffleMapTask来说返回的是MapStatus
+          // 封装了计算的数据
+          // 后面如果还是一个ShuffleMapTask就会去联系MapOutputTracker,来获取上一个ShuffleMapper的输出位置
+          // 然后通过网络拉取数据 ResultTask也一样
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = attemptNumber,
@@ -318,7 +330,7 @@ private[spark] class Executor(
         if (task.killed) {
           throw new TaskKilledException
         }
-
+        // 对MapStaus进行各种序列化和封装
         val resultSer = env.serializer.newInstance()
         val beforeSerialization = System.currentTimeMillis()
         val valueBytes = resultSer.serialize(value)
@@ -326,6 +338,8 @@ private[spark] class Executor(
 
         // Deserialization happens in two parts: first, we deserialize a Task object, which
         // includes the Partition. Second, Task.run() deserializes the RDD and function to be run.
+        // 统计一些消耗信息，用于WebUI上展示
+        // 在企业中开发经常需要去UI看
         task.metrics.setExecutorDeserializeTime(
           (taskStart - deserializeStartTime) + task.executorDeserializeTime)
         task.metrics.setExecutorDeserializeCpuTime(
@@ -365,7 +379,7 @@ private[spark] class Executor(
             serializedDirectResult
           }
         }
-
+        // 这个非常核心，调用了Executor所在CoarseGrainedExecutorBackend的statusUpdate()方法
         execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
 
       } catch {
@@ -483,6 +497,7 @@ private[spark] class Executor(
   }
 
   /**
+    * 资源文件更新
    * Download any missing dependencies if we receive a new set of files and JARs from the
    * SparkContext. Also adds any new JARs we fetched to the class loader.
    */
