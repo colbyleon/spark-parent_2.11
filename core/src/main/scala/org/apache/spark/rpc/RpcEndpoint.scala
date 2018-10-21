@@ -108,8 +108,8 @@ private[spark] trait RpcEndpoint {
     // By default, do nothing.
   }
 
-  /**
-   * Invoked before [[RpcEndpoint]] starts to handle any message.
+  /**Invoked before [[RpcEndpoint]] starts to handle any message.
+   *
    */
   def onStart(): Unit = {
     // By default, do nothing.

@@ -431,6 +431,7 @@ private[deploy] class Worker(
 
       val execs = executors.values.
         map(e => new ExecutorDescription(e.appId, e.execId, e.cores, e.state))
+      // 向master汇报自己的管理的executor和driver
       masterRef.send(WorkerSchedulerStateResponse(workerId, execs.toList, drivers.keys.toSeq))
 
     case ReconnectWorker(masterUrl) =>

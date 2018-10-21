@@ -208,9 +208,11 @@ private[deploy] class Master(
   }
 
   override def receive: PartialFunction[Any, Unit] = {
+    // 被选为领导将开始进行Recovery操作
     case ElectedLeader =>
       val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData(rpcEnv)
       state = if (storedApps.isEmpty && storedDrivers.isEmpty && storedWorkers.isEmpty) {
+        // 都是空的说明刚启动
         RecoveryState.ALIVE
       } else {
         RecoveryState.RECOVERING
@@ -222,10 +224,10 @@ private[deploy] class Master(
           override def run(): Unit = Utils.tryLogNonFatalError {
             self.send(CompleteRecovery)
           }
-        }, WORKER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        }, WORKER_TIMEOUT_MS, TimeUnit.MILLISECONDS) // 默认等待60秒后给自己发送 CompleteRecovery
       }
 
-    case CompleteRecovery => completeRecovery()
+    case CompleteRecovery => completeRecovery() // 会删除在recovery过程中没响应的将被清除
 
     case RevokedLeadership =>
       logError("Leadership has been revoked -- master shutting down.")
@@ -276,20 +278,23 @@ private[deploy] class Master(
             if (!appInfo.isFinished) {
               appInfo.removeExecutor(exec)
             }
+            // 从worker中移除executor
             exec.worker.removeExecutor(exec)
 
             val normalExit = exitStatus == Some(0)
             // Only retry certain number of times so we don't go into an infinite loop.
             // Important note: this code path is not exercised by tests, so be very careful when
             // changing this `if` condition.
+
+            // 如果是非常结束的
             if (!normalExit
-                && appInfo.incrementRetryCount() >= MAX_EXECUTOR_RETRIES
+                && appInfo.incrementRetryCount() >= MAX_EXECUTOR_RETRIES // 超过重试次数
                 && MAX_EXECUTOR_RETRIES >= 0) { // < 0 disables this application-killing path
               val execs = appInfo.executors.values
               if (!execs.exists(_.state == ExecutorState.RUNNING)) {
                 logError(s"Application ${appInfo.desc.name} with ID ${appInfo.id} failed " +
                   s"${appInfo.retryCount} times; removing it")
-                removeApplication(appInfo, ApplicationState.FAILED)
+                removeApplication(appInfo, ApplicationState.FAILED) // 删除app
               }
             }
           }
@@ -515,6 +520,14 @@ private[deploy] class Master(
     workers.count(_.state == WorkerState.UNKNOWN) == 0 &&
       apps.count(_.state == ApplicationState.UNKNOWN) == 0
 
+  /**
+    * standbyMaster 切换为Master后
+    * 第一步先使用持久化引擎从storedApps、storedDrivers、storedWorkers读取信息（持久化引擎有fileSystem、zookeeper）
+    * 第二步做相应的处理， 重新注册，将状态调为unknown,并通知Application所在的Driver和Worker
+    * 如果Driver和Worker正在正常动作的话，会响应Master的MasterChange消息
+    * Master在陆续接收到Driver和Worker的响应消息后会使用CompleteRecover方法对没有响应的Driver和Worker资源进行回收
+    * 最后重新调度
+    */
   private def beginRecovery(storedApps: Seq[ApplicationInfo], storedDrivers: Seq[DriverInfo],
       storedWorkers: Seq[WorkerInfo]) {
     for (app <- storedApps) {
@@ -593,6 +606,14 @@ private[deploy] class Master(
    * has enough cores and memory. Otherwise, each executor grabs all the cores available on the
    * worker by default, in which case only one executor may be launched on each worker.
    *
+    * 每次在每个工作者上分配coresPerExecutor(而不是一次分配一个核心)是很重要的。
+    * 考虑下面的例子:
+    *   集群有4个worker，每个worker有16个cores。
+    *   用户请求3个executors(spark.cores.max = 48, spark.executor.cores = 16)。
+    *   如果一次分配1个core。，那么每个worker的12个cores将分配给每个executor。
+    *   因为12 < 16，没有executor将启动 [SPARK-8881]。
+    *
+    *   48/4 = 12 < 16?  spark.executor.cores = 16 满足这个条件才能启动executor
    * It is important to allocate coresPerExecutor on each worker at a time (instead of 1 core
    * at a time). Consider the following example: cluster has 4 workers with 16 cores each.
    * User requests 3 executors (spark.cores.max = 48, spark.executor.cores = 16). If 1 core is
@@ -639,7 +660,7 @@ private[deploy] class Master(
     var freeWorkers = (0 until numUsable).filter(canLaunchExecutor)
     while (freeWorkers.nonEmpty) {
       freeWorkers.foreach { pos =>
-        var keepScheduling = true
+        var keepScheduling = true //一个worker被分配了executor后是否继续分配executor
         while (keepScheduling && canLaunchExecutor(pos)) {
           // 每一次分配最小的core数
           coresToAssign -= minCoresPerExecutor
@@ -682,17 +703,17 @@ private[deploy] class Master(
       val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
       // Filter out workers that don't have enough resources to launch an executor
       val usableWorkers = workers.toArray
-        .filter(_.state == WorkerState.ALIVE)
+        .filter(_.state == WorkerState.ALIVE) //状态是活的
         .filter(worker => worker.memoryFree >= app.desc.memoryPerExecutorMB &&
-          worker.coresFree >= coresPerExecutor.getOrElse(1))
-        .sortBy(_.coresFree).reverse
+          worker.coresFree >= coresPerExecutor.getOrElse(1)) // 内存和cpu是满足的
+        .sortBy(_.coresFree).reverse // 根据核数从大到小排序
       // 每个worker需要分配出去的core数
       val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
 
       // Now that we've decided how many cores to allocate on each worker, let's allocate them
       // 将每个worker的分配计划分配到App
       // executor_num = assignedCores(pos)/ per_exe_core
-      // 如果 per_exe_core未指定，则assignedCores(pos)都分配到一个executor
+      // 如果 每个executor的核数未指定，则assignedCores(pos)都分配到一个executor
       for (pos <- 0 until usableWorkers.length if assignedCores(pos) > 0) {
         allocateWorkerResourceToExecutors(
           app, assignedCores(pos), coresPerExecutor, usableWorkers(pos))
@@ -712,6 +733,8 @@ private[deploy] class Master(
       assignedCores: Int,
       coresPerExecutor: Option[Int],
       worker: WorkerInfo): Unit = {
+    //如果指定了每个执行器的内核数，我们将无保留的分配给这个executor的core平均地分配给executor。
+    //否则，我们将启动一个executor，它将获取这个executor上的所有指定的内核。
     // If the number of cores per executor is specified, we divide the cores assigned
     // to this worker evenly among the executors with no remainder.
     // Otherwise, we launch a single executor that grabs all the assignedCores on this worker.
@@ -725,6 +748,7 @@ private[deploy] class Master(
   }
 
   /**
+    * 在等待的应用程序中安排当前可用的资源。每当新应用程序连接或资源可用性更改时，都会调用此方法。
    * Schedule the currently available resources among waiting apps. This method will be called
    * every time a new app joins or resource availability changes.
    */
@@ -737,7 +761,7 @@ private[deploy] class Master(
     // 对状态为Alive的work进行洗牌
     val shuffledAliveWorkers = Random.shuffle(workers.toSeq.filter(_.state == WorkerState.ALIVE))
     val numWorkersAlive = shuffledAliveWorkers.size
-    var curPos = 0
+    var curPos = 0 // 当前指针
 
     // 首先调度driver
     // 为什么要调度driver,其实只有用yarn-cluster模式提交的时候，才会注册driver，
@@ -1032,14 +1056,17 @@ private[deploy] class Master(
     */
   private def launchDriver(worker: WorkerInfo, driver: DriverInfo) {
     logInfo("Launching driver " + driver.id + " on worker " + worker.id)
+    // 在内存中标记
     worker.addDriver(driver)
     driver.worker = Some(worker)
+    // 在worker上启动driver
     worker.endpoint.send(LaunchDriver(driver.id, driver.desc))
     driver.state = DriverState.RUNNING
   }
 
   /**
     * 移除driver
+    *
     */
   private def removeDriver(
       driverId: String,
@@ -1057,6 +1084,7 @@ private[deploy] class Master(
         persistenceEngine.removeDriver(driver)
         driver.state = finalState
         driver.exception = exception
+        // 从运行driver的worker中移除driver
         driver.worker.foreach(w => w.removeDriver(driver))
         schedule()
       case None =>

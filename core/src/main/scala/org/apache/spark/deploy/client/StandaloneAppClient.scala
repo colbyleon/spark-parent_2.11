@@ -45,7 +45,7 @@ private[spark] class StandaloneAppClient(
     rpcEnv: RpcEnv,
     masterUrls: Array[String],
     appDescription: ApplicationDescription,
-    listener: StandaloneAppClientListener,
+    listener: StandaloneAppClientListener, // 各种事件发生时的回调监听器
     conf: SparkConf)
   extends Logging {
 

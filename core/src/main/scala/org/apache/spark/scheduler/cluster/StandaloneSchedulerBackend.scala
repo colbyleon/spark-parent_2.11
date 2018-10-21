@@ -55,6 +55,7 @@ private[spark] class StandaloneSchedulerBackend(
   private val maxCores = conf.getOption("spark.cores.max").map(_.toInt)
   private val totalExpectedCores = maxCores.getOrElse(0)
 
+  // track: sc -> taskScheduler.start() -> this.start()
   override def start() {
     super.start()
     launcherBackend.connect()
@@ -106,8 +107,10 @@ private[spark] class StandaloneSchedulerBackend(
     // ApplicationDescription非常重要，后面我们剖析Master的时候，还会来看它
     // 它就代表当前执行的这个application的情况
     // 包括application需要多少core,每个slave需要多少内存
+    // maxCores = executorPerCore * executorNum
     val appDesc = new ApplicationDescription(sc.appName, maxCores, sc.executorMemory, command,
       appUIAddress, sc.eventLogDir, sc.eventLogCodec, coresPerExecutor, initialExecutorLimit)
+    // 用于通信
     client = new StandaloneAppClient(sc.env.rpcEnv, masters, appDesc, this, conf)
     client.start()
     launcherBackend.setState(SparkAppHandle.State.SUBMITTED)

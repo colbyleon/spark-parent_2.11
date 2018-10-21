@@ -33,6 +33,7 @@ import org.apache.spark.network.util.TransportConf
 import org.apache.spark.util.{ShutdownHookManager, Utils}
 
 /**
+  * 提供一个服务器，执行程序可以从中读取shuffle文件(而不是直接从对方读取)，以在执行程序被关闭或关闭时不间断地访问文件。
  * Provides a server from which Executors can read shuffle files (rather than reading directly from
  * each other), to provide uninterrupted access to the files in the face of executors being turned
  * off or killed.

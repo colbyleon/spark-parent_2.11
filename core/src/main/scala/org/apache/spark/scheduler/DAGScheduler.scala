@@ -45,12 +45,22 @@ import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
 import org.apache.spark.util._
 
 /**
+  * 实现面向阶段调度的高级调度层。它计算每个作业的阶段DAG，跟踪哪些RDDs和阶段输出被物化，并找到运行作业的最小时间表。
+  * 然后它将阶段作为任务集提交给在集群上运行它们的底层TaskScheduler实现。
+  * TaskSet包含完全独立的任务，可以基于集群中已经存在的数据立即运行(例如，以前阶段的map输出文件)，但是如果数据不可用，它可能会失败。
+  *
  * The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
  * stages for each job, keeps track of which RDDs and stage outputs are materialized, and finds a
  * minimal schedule to run the job. It then submits stages as TaskSets to an underlying
  * TaskScheduler implementation that runs them on the cluster. A TaskSet contains fully independent
  * tasks that can run right away based on the data that's already on the cluster (e.g. map output
  * files from previous stages), though it may fail if this data becomes unavailable.
+ *
+ *  Spark阶段是通过在shuffle边界打破RDD图创建的。
+ *  具有“窄”依赖关系的RDD操作(如map()和filter())在每个阶段都被流水线排列到一组任务中，
+ *  但是具有shuffle依赖关系的操作需要多个阶段(一个阶段编写一组map输出文件，另一个阶段在遇到障碍后读取这些文件)。
+ *  最后，每个stage只对其他stage具有shuffle依赖，
+ *  并可能在其中计算多个操作。这些操作的实际流水线操作发生在各种RDDs (MappedRDD、FilteredRDD等)的RDD.compute()函数中。
  *
  * Spark stages are created by breaking the RDD graph at shuffle boundaries. RDD operations with
  * "narrow" dependencies, like map() and filter(), are pipelined together into one set of tasks
@@ -60,6 +70,10 @@ import org.apache.spark.util._
  * inside it. The actual pipelining of these operations happens in the RDD.compute() functions of
  * various RDDs (MappedRDD, FilteredRDD, etc).
  *
+  * 除了提出阶段DAG之外，DAGScheduler还根据当前缓存状态确定运行每个任务的首选位置，
+  * 并将这些位置传递给低级任务调度程序。
+  * 此外，它还处理由于shuffle输出文件丢失而导致的故障，在这种情况下，旧的stage可能需要重新提交。
+  * 任务调度程序将在取消整个stage之前对每个task进行少量的重试。
  * In addition to coming up with a DAG of stages, the DAGScheduler also determines the preferred
  * locations to run each task on, based on the current cache status, and passes these to the
  * low-level TaskScheduler. Furthermore, it handles failures due to shuffle output files being
@@ -92,6 +106,11 @@ import org.apache.spark.util._
  *  - Cleanup: all data structures are cleared when the running jobs that depend on them finish,
  *    to prevent memory leaks in a long-running application.
  *
+  * 为了从失败中恢复，同一阶段可能需要运行多次，这称为“尝试”。如果任务调度程序报告任务失败，因为前一个阶段的映射输出文件丢失，
+  * DAGScheduler会重新提交丢失的stage。这是通过带有FetchFailed或ExecutorLost事件的CompletionEvent检测到的。
+  * DAGScheduler会等待一小段时间来查看其他节点或任务是否失败，然后为计算丢失任务的任何丢失stage重新提交任务集。
+  * 作为这个过程的一部分，我们可能还需要为以前被清理的stage对象的旧(stage)stage创建stage对象。
+  * 由于旧阶段尝试的任务仍然可以运行，因此必须小心映射在正确的stage对象中接收到的任何事件。
  * To recover from failures, the same stage might need to run multiple times, which are called
  * "attempts". If the TaskScheduler reports that a task failed because a map output file from a
  * previous stage was lost, the DAGScheduler resubmits that lost stage. This is detected through a

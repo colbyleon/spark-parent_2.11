@@ -2520,10 +2520,12 @@ object SparkContext extends Logging {
         scheduler.initialize(backend)
         (backend, scheduler)
 
+        // standalone方法 spark://host:port
       case SPARK_REGEX(sparkUrl) =>
         val scheduler = new TaskSchedulerImpl(sc)
         val masterUrls = sparkUrl.split(",").map("spark://" + _)
         val backend = new StandaloneSchedulerBackend(scheduler, sc, masterUrls)
+        // 创建完taskSchedulerImpl后初始化，会创建一个线程池
         scheduler.initialize(backend)
         (backend, scheduler)
 
