@@ -130,6 +130,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           executorDataMap.get(executorId) match {
             case Some(executorInfo) =>
               executorInfo.freeCores += scheduler.CPUS_PER_TASK
+              // 继续执行task？
               makeOffers(executorId)
             case None =>
               // Ignoring the update since we don't know about the executor.
@@ -220,9 +221,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     private def makeOffers() {
       // Filter out executors under killing
       val activeExecutors = executorDataMap.filterKeys(executorIsAlive)
+      // 每个workOffer代表每个executor可用的资源
       val workOffers = activeExecutors.map { case (id, executorData) =>
         new WorkerOffer(id, executorData.executorHost, executorData.freeCores)
       }.toIndexedSeq
+
       launchTasks(scheduler.resourceOffers(workOffers))
     }
 
@@ -253,6 +256,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     // Launch tasks returned by a set of resource offers
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
       for (task <- tasks.flatten) {
+        // 序列化任务
         val serializedTask = ser.serialize(task)
         if (serializedTask.limit >= maxRpcMessageSize) {
           scheduler.taskIdToTaskSetManager.get(task.taskId).foreach { taskSetMgr =>
@@ -407,7 +411,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       removeExecutor(eid, SlaveLost("Stale executor after cluster manager re-registered."))
     }
   }
-
+  // 程序本身就是在drvier中 driver -> sparkContext -> TaskScheduler -> SchedulerBackend
   override def reviveOffers() {
     driverEndpoint.send(ReviveOffers)
   }

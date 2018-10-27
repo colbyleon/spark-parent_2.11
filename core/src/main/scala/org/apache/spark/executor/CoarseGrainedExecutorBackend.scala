@@ -146,8 +146,9 @@ private[spark] class CoarseGrainedExecutorBackend(
 
   override def statusUpdate(taskId: Long, state: TaskState, data: ByteBuffer) {
     val msg = StatusUpdate(executorId, taskId, state, data)
+    // driver我们自己写的代码，sparkContext启动的位置 CoarseGrainedSchedulerBackend
     driver match {
-      // 发送到CoarseGrainedSchedulerBackend
+      // 发送到 CoarseGrainedSchedulerBackend
       case Some(driverRef) => driverRef.send(msg)
       case None => logWarning(s"Drop $msg because has not yet connected to driver")
     }

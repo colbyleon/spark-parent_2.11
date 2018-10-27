@@ -461,6 +461,7 @@ private[deploy] class Worker(
               appDir.getAbsolutePath()
             }.toSeq)
           appDirectories(appId) = appLocalDirs
+
           val manager = new ExecutorRunner(
             appId,
             execId,
@@ -483,6 +484,7 @@ private[deploy] class Worker(
           manager.start()
           coresUsed += cores_
           memoryUsed += memory_
+          // 启动executor后通知master，master又会通知到driver
           sendToMaster(ExecutorStateChanged(appId, execId, manager.state, None, None))
         } catch {
           case e: Exception =>

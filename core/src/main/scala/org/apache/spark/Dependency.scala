@@ -62,9 +62,10 @@ abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
  * :: DeveloperApi ::
  * Represents a dependency on the output of a shuffle stage. Note that in the case of shuffle,
  * the RDD is transient since we don't need it on the executor side.
+  * ShuffleDependency 只有kv对RDD才有
  *
  * @param _rdd the parent RDD
- * @param partitioner partitioner used to partition the shuffle output
+ * @param partitioner partitioner used to partition the shuffle output 给每个block分区？
  * @param serializer [[org.apache.spark.serializer.Serializer Serializer]] to use. If not set
  *                   explicitly then the default serializer, as specified by `spark.serializer`
  *                   config option, will be used.
@@ -103,6 +104,7 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
 /**
  * :: DeveloperApi ::
  * Represents a one-to-one dependency between partitions of the parent and child RDDs.
+  * 分区一对一
  */
 @DeveloperApi
 class OneToOneDependency[T](rdd: RDD[T]) extends NarrowDependency[T](rdd) {
@@ -115,6 +117,13 @@ class OneToOneDependency[T](rdd: RDD[T]) extends NarrowDependency[T](rdd) {
  * Represents a one-to-one dependency between ranges of partitions in the parent and child RDDs.
   *
   * 分区之间还是一对一的依赖关系不过 索引号有偏差?
+  * index       index
+  * 0   -   -   0
+  * 1   -   -   1
+  * 0   +   -   2
+  * 1   +   -   3
+  * 如上一个RDD对应父RDD的四个分区 只有UnionRDD才会用到
+  *
  * @param rdd the parent RDD
  * @param inStart the start of the range in the parent RDD
  * @param outStart the start of the range in the child RDD

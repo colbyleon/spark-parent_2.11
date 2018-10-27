@@ -31,6 +31,9 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.shuffle.ShuffleWriter
 
 /**
+  * ShuffleMapTask将RDD的元素划分为多个buckets(基于ShuffleDependency中指定的partitioner)。
+  * 个人理解： buckets对应每一个输出的分区
+  *
  * A ShuffleMapTask divides the elements of an RDD into multiple buckets (based on a partitioner
  * specified in the ShuffleDependency).
  *
@@ -86,6 +89,7 @@ private[spark] class ShuffleMapTask(
     } else 0L
     // 对相关数据做反序列化
     val ser = SparkEnv.get.closureSerializer.newInstance()
+    // 取得了task的rdd和依赖，应该是stage的最后一个rdd
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
@@ -101,7 +105,7 @@ private[spark] class ShuffleMapTask(
 
       // 最最重要的一行代码
       // 核心逻辑在iterator()方法中，执行了我们自己定义的逻辑
-      // 返回的数据都是通过ShuffleWriter经过HashPartitioner进行分区之后写入自己对应的分区
+      // 返回的数据都是通过ShuffleWriter经过Partitioner进行分区之后写入不同的bucket中
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       // 最后返回结果，MapperStatus
       // 里面封装了shuffleMapTask计算后的数据，其实就是BlockManager相关的信息

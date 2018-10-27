@@ -30,11 +30,18 @@ import org.apache.spark.util.CallSite
  * of a Spark job, where all the tasks have the same shuffle dependencies. Each DAG of tasks run
  * by the scheduler is split up into stages at the boundaries where shuffle occurs, and then the
  * DAGScheduler runs these stages in topological order.
+  * stage是一组需要运行的相同函数的并行任务，它们是Spark job的一部分，
+  * 其中所有任务都具有相同的shuffle依赖项。
+  * 由scheduler运行的每个DAG任务在发生shuffle 的边界处被分割成stage，
+  * 然后DAGScheduler按照拓扑顺序运行这些阶段。
  *
  * Each Stage can either be a shuffle map stage, in which case its tasks' results are input for
  * other stage(s), or a result stage, in which case its tasks directly compute a Spark action
  * (e.g. count(), save(), etc) by running a function on an RDD. For shuffle map stages, we also
  * track the nodes that each output partition is on.
+  * 每个Stage可以是shuffle map阶段，在这种情况下，其任务的结果将输入到其他阶段，
+  * 也可以是结果阶段，在这种情况下，其任务通过在RDD上运行函数直接计算Spark action(例如count()、save()等)。
+  * 对于shuffle map stage，我们还跟踪每个输出分区所在的节点。
  *
  * Each Stage also has a firstJobId, identifying the job that first submitted the stage.  When FIFO
  * scheduling is used, this allows Stages from earlier jobs to be computed first or recovered
@@ -118,7 +125,8 @@ private[scheduler] abstract class Stage(
     nextAttemptId += 1
   }
 
-  /** Returns the StageInfo for the most recent attempt for this stage. */
+  /** Returns the StageInfo for the most recent attempt for this stage.
+    * 返回这个阶段的最新尝试的StageInfo*/
   def latestInfo: StageInfo = _latestInfo
 
   override final def hashCode(): Int = id

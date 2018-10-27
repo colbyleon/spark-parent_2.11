@@ -268,6 +268,7 @@ private[deploy] class Master(
             appInfo.resetRetryCount()
           }
 
+          // 通知运行application的driver ,driver是worker上的一个进程或者是本地的进程
           exec.application.driver.send(ExecutorUpdated(execId, state, message, exitStatus, false))
 
           if (ExecutorState.isFinished(state)) {
@@ -286,7 +287,7 @@ private[deploy] class Master(
             // Important note: this code path is not exercised by tests, so be very careful when
             // changing this `if` condition.
 
-            // 如果是非常结束的
+            // 如果是非正常结束的
             if (!normalExit
                 && appInfo.incrementRetryCount() >= MAX_EXECUTOR_RETRIES // 超过重试次数
                 && MAX_EXECUTOR_RETRIES >= 0) { // < 0 disables this application-killing path

@@ -116,6 +116,7 @@ private[deploy] class DriverRunner(
         }
 
         // notify worker of final driver state, possible exception
+        // driver执行完成通知worker，worker收到通知后会再通知master
         worker.send(DriverStateChanged(driverId, finalState.get, finalException))
       }
     }.start()
@@ -149,6 +150,8 @@ private[deploy] class DriverRunner(
   }
 
   /**
+    * 将用户jar下载到提供的目录中，并返回其本地路径。
+    * 如果下载jar时出现错误，将抛出异常。
    * Download the user jar into the supplied directory and return its local path.
    * Will throw an exception if there are errors downloading the jar.
    */
@@ -190,6 +193,7 @@ private[deploy] class DriverRunner(
     val builder = CommandUtils.buildProcessBuilder(driverDesc.command, securityManager,
       driverDesc.mem, sparkHome.getAbsolutePath, substituteVariables)
 
+    // 通过buildProcessBuilder启动进程
     runDriver(builder, driverDir, driverDesc.supervise)
   }
 

@@ -116,6 +116,7 @@ abstract class RDD[T: ClassTag](
   def compute(split: Partition, context: TaskContext): Iterator[T]
 
   /**
+    * Partition代表一块分区的数据，getPartition方法包含了各子类RDD对分区的算法
    * Implemented by subclasses to return the set of partitions in this RDD. This method will only
    * be called once, so it is safe to implement a time-consuming computation in it.
    *

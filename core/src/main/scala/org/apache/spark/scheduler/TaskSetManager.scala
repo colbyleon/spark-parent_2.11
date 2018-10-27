@@ -33,7 +33,10 @@ import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
 
 /**
-  * 在TaskScheduleImpl中，对一个单独的TaskSet进行任务调度，这个类负责追踪每个...看英文
+  * 在taskscheduerimpl中的单个任务集中调度任务。
+  * 该类跟踪每个任务，如果任务失败(最多不超过有限次数)，就重试任务，并通过延迟调度来处理此任务集的位置感知调度。
+  * 它的主要接口是resourceOffer，它询问TaskSet是否想在一个节点上运行一个任务，
+  * 而statusUpdate告诉它它的一个任务改变了状态(例如，完成了)。
   */
 
 /**
@@ -399,6 +402,7 @@ private[spark] class TaskSetManager(
   }
 
   /**
+    *
    * Respond to an offer of a single executor from the scheduler by finding a task
    *
    * NOTE: this function is either called with a maxLocality which

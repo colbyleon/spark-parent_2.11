@@ -37,6 +37,7 @@ private[spark] class PartitionPruningRDDPartition(idx: Int, val parentSplit: Par
  * case, the child RDD contains a subset of partitions of the parents'.
  *
  * 裁剪分区 比如 对rdd用了filter 只保留偶数，如果分区也按奇偶规则划分，那么把奇数分区裁剪掉，就只依赖了父类的部分分区?
+  * 排除了父RDD的某些分区 只有PartitionPruningRDD有用到
  */
 private[spark] class PruneDependency[T](rdd: RDD[T], partitionFilterFunc: Int => Boolean)
   extends NarrowDependency[T](rdd) {

@@ -180,9 +180,12 @@ private[deploy] class ExecutorRunner(
 
       // Wait for it to exit; executor may exit with code 0 (when driver instructs it to shutdown)
       // or with nonzero exit code
+      // 等待运行完成
       val exitCode = process.waitFor()
       state = ExecutorState.EXITED
       val message = "Command exited with code " + exitCode
+
+      // 执行完成后通知worker,worker又会通知master,master又会通知app的driver(driver在初始化的最后阶段TaskScheduler会向master注册application)
       worker.send(ExecutorStateChanged(appId, execId, state, Some(message), Some(exitCode)))
     } catch {
       case interrupted: InterruptedException =>

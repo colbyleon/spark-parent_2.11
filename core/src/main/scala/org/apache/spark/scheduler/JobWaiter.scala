@@ -56,6 +56,7 @@ private[spark] class JobWaiter[T](
   override def taskSucceeded(index: Int, result: Any): Unit = {
     // resultHandler call must be synchronized in case resultHandler itself is not thread safe.
     synchronized {
+      // resultHandler就是给结果数组赋值，还是几个方法之外的runJob传过来的
       resultHandler(index, result.asInstanceOf[T])
     }
     if (finishedTasks.incrementAndGet() == totalTasks) {

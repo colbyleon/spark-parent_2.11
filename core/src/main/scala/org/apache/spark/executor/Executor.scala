@@ -252,14 +252,15 @@ private[spark] class Executor(
 
       try {
         // 反序列化
-        val (taskFiles, taskJars, taskProps, taskBytes) =
-          Task.deserializeWithDependencies(serializedTask)
+        val (taskFiles, taskJars, taskProps, taskBytes) = Task.deserializeWithDependencies(serializedTask)
 
         // Must be set before updateDependencies() is called, in case fetching dependencies
         // requires access to properties contained within (e.g. for access control).
         Executor.taskDeserializationProps.set(taskProps)
 
+        // 然后通过网络通信将需要的文件和资源jar拷贝过来
         updateDependencies(taskFiles, taskJars)
+
         // 为什么要用到classLoader
         // 因为classLoader可以干很多东西，比如用反射来动态加载一个类，然后创建这个类的对象
         // 还可以指定上下文相关资源，进行加载和读取
@@ -281,11 +282,13 @@ private[spark] class Executor(
         env.mapOutputTracker.updateEpoch(task.epoch)
 
         // Run the actual task and measure its runtime.
+        // task计算开始的时间
         taskStart = System.currentTimeMillis()
         taskStartCpu = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
           threadMXBean.getCurrentThreadCpuTime
         } else 0L
         var threwException = true
+
         val value = try {
           // 这里的res，对于shuffleMapTask来说返回的是MapStatus
           // 封装了计算的数据
@@ -321,6 +324,7 @@ private[spark] class Executor(
             }
           }
         }
+        // task结束的时间
         val taskFinish = System.currentTimeMillis()
         val taskFinishCpu = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
           threadMXBean.getCurrentThreadCpuTime
@@ -330,7 +334,7 @@ private[spark] class Executor(
         if (task.killed) {
           throw new TaskKilledException
         }
-        // 对MapStaus进行各种序列化和封装
+        // 对MapStatus进行各种序列化和封装，因为后要通过网络发送给driver
         val resultSer = env.serializer.newInstance()
         val beforeSerialization = System.currentTimeMillis()
         val valueBytes = resultSer.serialize(value)
@@ -380,6 +384,7 @@ private[spark] class Executor(
           }
         }
         // 这个非常核心，调用了Executor所在CoarseGrainedExecutorBackend的statusUpdate()方法
+        // 告诉executor(自己) task运行结束了
         execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
 
       } catch {
@@ -517,6 +522,8 @@ private[spark] class Executor(
         val currentTimeStamp = currentJars.get(name)
           .orElse(currentJars.get(localName))
           .getOrElse(-1L)
+
+        // 当前文件的时间戳小于目标时间戳
         if (currentTimeStamp < timestamp) {
           logInfo("Fetching " + name + " with timestamp " + timestamp)
           // Fetch file with useCache mode, close cache for local mode.

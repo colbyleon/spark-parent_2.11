@@ -307,6 +307,8 @@ private[spark] class TaskSchedulerImpl(
    * Called by cluster manager to offer resources on slaves. We respond by asking our active task
    * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
    * that tasks are balanced across the cluster.
+    * 由群集管理器调用，以提供从服务器上的资源。
+    * 我们根据任务的优先级请求活动任务集作为响应。我们以循环的方式向每个节点填充任务，以便在整个集群中平衡任务。
    */
   def resourceOffers(offers: IndexedSeq[WorkerOffer]): Seq[Seq[TaskDescription]] = synchronized {
     // Mark each slave as alive and remember its hostname
@@ -369,6 +371,9 @@ private[spark] class TaskSchedulerImpl(
       var launchedTaskAtCurrentMaxLocality = false
       for (currentMaxLocality <- taskSet.myLocalityLevels) {
         do {
+          // 对当前的taskSet 尝试优先使用最小的本地化级别，将taskSet的task，在executor上进行启动
+          // 如果启动不了，那么就跳出这个do_while循环，进入下一种本地化级别，
+          // 以此类推，直到尝试将taskSet在某些本地化级别下，让task在executor上全部启动
           launchedTaskAtCurrentMaxLocality = resourceOfferSingleTaskSet(
             taskSet, currentMaxLocality, shuffledOffers, availableCpus, tasks)
           launchedAnyTask |= launchedTaskAtCurrentMaxLocality

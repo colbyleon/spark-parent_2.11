@@ -815,7 +815,8 @@ class SparkContext(config: SparkConf) extends Logging {
    * Hadoop-supported file system URI, and return it as an RDD of Strings.
     *
     * 首先，hadoopFile()方法的调用，会创建一个HadoopRDD，其中的元素，其实是(key,value) pair
-    * HadoopRDD会被广播到所有worker
+    * 实际返回MapPartitionRDD
+    * hadoop的配置文件会被广播到所有worker
    */
   def textFile(
       path: String,
@@ -1908,7 +1909,7 @@ class SparkContext(config: SparkConf) extends Logging {
       rdd: RDD[T],
       func: (TaskContext, Iterator[T]) => U,
       partitions: Seq[Int],
-      resultHandler: (Int, U) => Unit): Unit = {
+      resultHandler: (Int, U) => Unit): Unit = { // resultHandler的 int是分区索引,U是值...
     if (stopped.get()) {
       throw new IllegalStateException("SparkContext has been shutdown")
     }
@@ -1931,6 +1932,7 @@ class SparkContext(config: SparkConf) extends Logging {
       func: (TaskContext, Iterator[T]) => U,
       partitions: Seq[Int]): Array[U] = {
     val results = new Array[U](partitions.size)
+    // 我了个去，在高阶函数中传入一个数组并赋值，高阶函数并运算完后，数组也填满了
     runJob[T, U](rdd, func, partitions, (index, res) => results(index) = res)
     results
   }

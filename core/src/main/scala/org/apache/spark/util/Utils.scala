@@ -60,7 +60,9 @@ import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, SerializerInstance}
 import org.apache.spark.util.logging.RollingFileAppender
 
-/** CallSite represents a place in user code. It can have a short and a long form. */
+/**
+  * CallSite表示用户代码中的一个位置。它可以有短的和长的形式
+  * CallSite represents a place in user code. It can have a short and a long form. */
 private[spark] case class CallSite(shortForm: String, longForm: String)
 
 private[spark] object CallSite {

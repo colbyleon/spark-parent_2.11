@@ -24,6 +24,7 @@ import org.apache.spark.launcher.LauncherProtocol._
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 /**
+  * 可用于与启动服务器通信的类。用户应该扩展这个类来为抽象方法提供实现。
  * A class that can be used to talk to a launcher server. Users should extend this class to
  * provide implementation for the abstract methods.
  *
