@@ -47,8 +47,12 @@ private[spark] class SortShuffleWriter[K, V, C](
 
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
-  /** Write a bunch of records to this task's output */
+  /**
+    * Write a bunch of records to this task's output
+    *  将每个ShuffleMapTask计算出的partition的结果写入本地磁盘
+    */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
+    // 是否在map端聚合
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](

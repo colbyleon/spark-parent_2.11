@@ -106,6 +106,17 @@ private[spark] class ShuffleMapTask(
       // 最最重要的一行代码
       // 核心逻辑在iterator()方法中，执行了我们自己定义的逻辑
       // 返回的数据都是通过ShuffleWriter经过Partitioner进行分区之后写入不同的bucket中
+      /**
+        * iterator()的数据源从哪里来？
+        * 首先是从本地缓存或磁盘中获取
+        * 其次是从checkPoint中获取
+        * 最后的办法是根据Lineage通过迭代计算得到，并按storageLevel存入内存或磁盘
+        * 那计算的数据从哪里来？
+        * see: [[org.apache.spark.rdd.ShuffledRDD#compute]]
+        *      [[org.apache.spark.rdd.HadoopRDD#compute]]
+        * 边迭代边写按partitioner写入bucket中，一次只有一个元素在流动
+        * see: [[org.apache.spark.util.collection.ExternalSorter#insertAll]]
+        */
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       // 最后返回结果，MapperStatus
       // 里面封装了shuffleMapTask计算后的数据，其实就是BlockManager相关的信息

@@ -40,12 +40,19 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
   private val dep = handle.dependency
 
-  /** Read the combined key-values for this reduce task */
+  /**
+    * Read the combined key-values for this reduce task
+    * task拉取数据
+    * 被ShuffledRDD调用
+    * 在getReader时已经设置了partition的index
+    */
   override def read(): Iterator[Product2[K, C]] = {
+    // 拉取输入数据的主要工具
     val blockFetcherItr = new ShuffleBlockFetcherIterator(
       context,
       blockManager.shuffleClient,
       blockManager,
+      // 拿到了给定分区范围内的 BlockManagerId以及它管理下的blockId和对应的文件大小 Seq[(BlockManagerId, Seq[(BlockId, Long)])]
       mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition),
       // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
       SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024,

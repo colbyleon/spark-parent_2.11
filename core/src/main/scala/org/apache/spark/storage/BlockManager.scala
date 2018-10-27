@@ -53,6 +53,7 @@ private[spark] class BlockResult(
     val bytes: Long)
 
 /**
+  * 在每个节点(驱动程序和执行程序)上运行的管理器，它提供了存储和检索本地和远程块放入各种存储(内存、磁盘和堆外)的接口。
  * Manager running on every node (driver and executors) which provides interfaces for putting and
  * retrieving blocks both locally and remotely into various stores (memory, disk, and off-heap).
  *
@@ -175,13 +176,9 @@ private[spark] class BlockManager(
       ret
     }
     // 为当前的BlockManager创建一个唯一的BlockManagerId
-    val id =
-      BlockManagerId(executorId, blockTransferService.hostName, blockTransferService.port, None)
+    val id = BlockManagerId(executorId, blockTransferService.hostName, blockTransferService.port, None)
     // 向blockManagerMaster注册，再取得一个id
-    val idFromMaster = master.registerBlockManager(
-      id,
-      maxMemory,
-      slaveEndpoint)
+    val idFromMaster = master.registerBlockManager(id, maxMemory, slaveEndpoint)
     // 以从master注册到的为准
     blockManagerId = if (idFromMaster != null) idFromMaster else id
 
@@ -443,6 +440,7 @@ private[spark] class BlockManager(
    */
   def getLocalValues(blockId: BlockId): Option[BlockResult] = {
     logDebug(s"Getting local block $blockId")
+    // 加上读锁，可读不可写
     blockInfoManager.lockForReading(blockId) match {
       case None =>
         logDebug(s"Block $blockId was not found")
@@ -468,6 +466,7 @@ private[spark] class BlockManager(
                 diskBytes.toInputStream(dispose = true))(info.classTag)
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
+              // 如果序列化的数据尝试再放到内存中
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskBytes)
                 .map {_.toInputStream(dispose = false)}
                 .getOrElse { diskBytes.toInputStream(dispose = true) }
@@ -512,6 +511,7 @@ private[spark] class BlockManager(
     logDebug(s"Level for block $blockId is $level")
     // In order, try to read the serialized bytes from memory, then from disk, then fall back to
     // serializing in-memory objects, and, finally, throw an exception if the block does not exist.
+    // 按照顺序，尝试从内存中读取序列化后的字节，然后从磁盘中读取，然后返回到内存对象中序列化，最后，如果块不存在，抛出异常。
     if (level.deserialized) {
       // Try to avoid expensive serialization by reading a pre-serialized copy from disk:
       if (level.useDisk && diskStore.contains(blockId)) {
@@ -519,6 +519,9 @@ private[spark] class BlockManager(
         // handles deserialized blocks, this block may only be cached in memory as objects, not
         // serialized bytes. Because the caller only requested bytes, it doesn't make sense to
         // cache the block's deserialized objects since that caching may not have a payoff.
+        // 注意:我们故意不尝试将块放回内存中。
+        // 因为这个分支处理反序列化块，所以这个块只能作为对象缓存在内存中，而不是序列化字节。
+        // 因为调用者只请求字节，所以缓存块的反序列化对象没有意义，因为缓存可能没有回报。
         diskStore.getBytes(blockId)
       } else if (level.useMemory && memoryStore.contains(blockId)) {
         // The block was not found on disk, so serialize an in-memory copy:
@@ -533,6 +536,7 @@ private[spark] class BlockManager(
       } else if (level.useDisk && diskStore.contains(blockId)) {
         val diskBytes = diskStore.getBytes(blockId)
         // 可能以前因为内存不够所以存放到磁盘中，现在取回再试着放入内存
+        // 存的是序列化的字节，而不是反序列化的对象
         maybeCacheDiskBytesInMemory(info, blockId, level, diskBytes).getOrElse(diskBytes)
       } else {
         handleLocalReadFailure(blockId)
@@ -687,7 +691,7 @@ private[spark] class BlockManager(
       level: StorageLevel,
       classTag: ClassTag[T],
       makeIterator: () => Iterator[T]): Either[BlockResult, Iterator[T]] = {
-    // 优先从本地获取
+    // 优先从本地获取,再从运程获取
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
@@ -697,11 +701,16 @@ private[spark] class BlockManager(
         // 本地和远程都没取到就需要计算了
         // Need to compute the block.
     }
+
+    /**
+      * 计算并把结果存到StorageLevel归定的地方
+      */
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
+        // doPutIterator()在从本地获取，没有则抛错
         val blockResult = getLocalValues(blockId).getOrElse {
           // Since we held a read lock between the doPut() and get() calls, the block should not
           // have been evicted, so get() not returning the block indicates some internal error.
@@ -965,6 +974,7 @@ private[spark] class BlockManager(
               size = s
             case Left(iter) =>
               // Not enough space to unroll this block; drop to disk if applicable
+              // 如果有些内容无法写入内存，那就判断是否能写磁盘
               if (level.useDisk) {
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { fileOutputStream =>

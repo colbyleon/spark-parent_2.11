@@ -288,9 +288,11 @@ abstract class RDD[T: ClassTag](
    * Internal method to this RDD; will read from cache if applicable, or otherwise compute it.
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
+    * 如果要checkpoint一定在第一次计算时调用persis()方法
+    * 不然会因为checkpoint再次进行第二次计算
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
-    // 如果持久化过RDD
+    // 在driver中写的persis()方法改变的只是RDD的storageLevel，在这个时候才发挥作用
     if (storageLevel != StorageLevel.NONE) {
       // 优先尝试使用CacheManage去获取数据
       getOrCompute(split, context)
@@ -330,6 +332,10 @@ abstract class RDD[T: ClassTag](
   private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[T] =
   {
     if (isCheckpointedAndMaterialized) {
+      /**
+       *  如果checkpointed lineage会被改变，父RDD会变成一个CheckpointRDD
+       *  see [[org.apache.spark.rdd.ReliableCheckpointRDD#compute]]
+       */
       firstParent[T].iterator(split, context)
     } else {
       compute(split, context)
@@ -340,12 +346,12 @@ abstract class RDD[T: ClassTag](
    * Gets or computes an RDD partition. Used by RDD.iterator() when an RDD is cached.
    */
   private[spark] def getOrCompute(partition: Partition, context: TaskContext): Iterator[T] = {
-    val blockId = RDDBlockId(id, partition.index)
+    val blockId = RDDBlockId(id, partition.index) // RDD_Id +　partitionId 对应一个blockId
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
     SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {
       readCachedBlock = false
-      computeOrReadCheckpoint(partition, context)
+      computeOrReadCheckpoint(partition, context) // 本地和远程没有时会调用这个方法
     }) match {
       case Left(blockResult) =>
         if (readCachedBlock) {
@@ -1554,6 +1560,15 @@ abstract class RDD[T: ClassTag](
     if (context.checkpointDir.isEmpty) {
       throw new SparkException("Checkpoint directory has not been set in the SparkContext")
     } else if (checkpointData.isEmpty) {
+      /**
+        * 这一步会使cpStatue = Initialized
+        * see [[org.apache.spark.rdd.RDDCheckpointData#cpState()]]
+        * 当RDD所在job运行结束后，会沿着finalRDD的lineage向上查找标记为Initialized的RDD
+        * 并将其标注为CheckpointingInProgress
+        * 再启动一个单独的job来将标记为CheckpointingInProgress的RDD进行checkpoint到checkpointDir
+        * 然后会清除掉RDD的所有依赖，并强行将其父RDD设置为CheckpointRDD
+        * 而且RDD的状态会被设置为Checkpointed
+        */
       checkpointData = Some(new ReliableRDDCheckpointData(this))
     }
   }
@@ -1751,7 +1766,7 @@ abstract class RDD[T: ClassTag](
    * created from the checkpoint file, and forget its old dependencies and partitions.
    */
   private[spark] def markCheckpointed(): Unit = {
-    clearDependencies()
+    clearDependencies() // 清除依赖
     partitions_ = null
     deps = null    // Forget the constructor argument for dependencies too
   }

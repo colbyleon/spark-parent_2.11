@@ -130,6 +130,9 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
   }
 
   /**
+    * 从executors调用，以获取需要从给定的映射输出分区范围中读取的每个shuffle块的服务器uri和输出大小
+    * (包括startPartition，但不包括endPartition)。
+    *
    * Called from executors to get the server URIs and output sizes for each shuffle block that
    * needs to be read from a given range of map output partitions (startPartition is included but
    * endPartition is excluded from the range).
@@ -141,6 +144,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
   def getMapSizesByExecutorId(shuffleId: Int, startPartition: Int, endPartition: Int)
       : Seq[(BlockManagerId, Seq[(BlockId, Long)])] = {
     logDebug(s"Fetching outputs for shuffle $shuffleId, partitions $startPartition-$endPartition")
+    // 一定会走运程网络通信
     val statuses = getStatuses(shuffleId)
     // Synchronize on the returned array because, on the driver, it gets mutated in place
     statuses.synchronized {
@@ -166,6 +170,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
   }
 
   /**
+    * 获取或获取给定shuffle ID的MapStatuses数组。
    * Get or fetch the array of MapStatuses for a given shuffle ID. NOTE: clients MUST synchronize
    * on this array when reading it, because on the driver, we may be changing it in place.
    *

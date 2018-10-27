@@ -199,6 +199,7 @@ private[spark] class ExternalSorter[K, V, C](
       while (records.hasNext) {
         addElementsRead()
         val kv = records.next()
+        // 写入对应的分区
         buffer.insert(getPartition(kv._1), kv._1, kv._2.asInstanceOf[C])
         maybeSpillCollection(usingMap = false)
       }

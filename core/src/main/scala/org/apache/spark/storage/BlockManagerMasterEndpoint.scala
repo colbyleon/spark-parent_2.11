@@ -32,6 +32,9 @@ import org.apache.spark.storage.BlockManagerMessages._
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 /**
+  * 这是实际工作的blockManageMaster
+  * 就是维护了各个executor的BlockManager的元数据
+  * 如： BlockManagerInfo,BlockStatus
  * BlockManagerMasterEndpoint is an [[ThreadSafeRpcEndpoint]] on the master node to track statuses
  * of all slaves' block managers.
  */
@@ -44,10 +47,12 @@ class BlockManagerMasterEndpoint(
   extends ThreadSafeRpcEndpoint with Logging {
 
   // Mapping from block manager id to the block manager's information.
+  // id -> 在每个节点(驱动程序和执行程序)上运行的blockManager的信息
   private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
 
   // Mapping from executor ID to block manager ID.
   // executorId -> manageId
+  // 每个executor是与blockManager相关联的
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
 
   // Mapping from block id to the set of block managers that have the block.
@@ -328,7 +333,9 @@ class BlockManagerMasterEndpoint(
       topologyMapper.getTopologyForHost(idWithoutTopologyInfo.host))
 
     val time = System.currentTimeMillis()
+    // 首先判断，没有注册过
     if (!blockManagerInfo.contains(id)) {
+      // 再判断根据executor能不能找到blockManagerId，有就报错并清理
       blockManagerIdByExecutor.get(id.executorId) match {
         case Some(oldId) =>
           // A block manager of the same executor already exists, so remove it (assumed dead)
@@ -339,9 +346,8 @@ class BlockManagerMasterEndpoint(
       }
       logInfo("Registering block manager %s with %s RAM, %s".format(
         id.hostPort, Utils.bytesToString(maxMemSize), id))
-      // 注册
+      // 注册blockManager
       blockManagerIdByExecutor(id.executorId) = id
-
       blockManagerInfo(id) = new BlockManagerInfo(
         id, System.currentTimeMillis(), maxMemSize, slaveEndpoint)
     }
@@ -445,7 +451,8 @@ object BlockStatus {
 }
 
 /**
-  * BlockManage的无数据
+  * 相当于BlockManage的元数据
+  * 管理了blockId -> BlockStatus的映射
   */
 private[spark] class BlockManagerInfo(
     val blockManagerId: BlockManagerId,
@@ -458,6 +465,7 @@ private[spark] class BlockManagerInfo(
   private var _remainingMem: Long = maxMem
 
   // Mapping from block id to its status.
+
   private val _blocks = new JHashMap[BlockId, BlockStatus]
 
   // Cached blocks held by this BlockManager. This does not include broadcast blocks.

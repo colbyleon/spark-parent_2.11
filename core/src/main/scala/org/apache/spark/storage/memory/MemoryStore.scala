@@ -87,7 +87,7 @@ private[spark] class MemoryStore(
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
   // block实际的数据
-
+  // block的实体，在内存中的数据
   private val entries = new LinkedHashMap[BlockId, MemoryEntry[_]](32, 0.75f, true)
 
   // A mapping from taskAttemptId to amount of memory used for unrolling a block (in bytes)
@@ -169,13 +169,21 @@ private[spark] class MemoryStore(
    * whether there is enough free memory. If the block is successfully materialized, then the
    * temporary unroll memory used during the materialization is "transferred" to storage memory,
    * so we won't acquire more memory than is actually needed to store the block.
-   *
+    * 尝试将给定的块作为值放入内存存储中。
+    * 迭代器可能太大，无法实现并存储在内存中。
+    * 为了避免OOM异常，该方法将逐步展开迭代器，同时定期检查是否有足够的空闲内存。
+    * 如果块成功物化，那么在物化期间使用的临时展开内存被“转移”到存储内存中，因此我们不会获得比实际需要存储块更多的内存。
+    *
    * @return in case of success, the estimated size of the stored data. In case of failure, return
    *         an iterator containing the values of the block. The returned iterator will be backed
    *         by the combination of the partially-unrolled block and the remaining elements of the
    *         original input iterator. The caller must either fully consume this iterator or call
    *         `close()` on it in order to free the storage memory consumed by the partially-unrolled
    *         block.
+    *         如果成功，则估计存储数据的大小。
+    *         如果失败，return an iterator containing the values of the block
+    *         返回的迭代器将由部分展开的块和原始输入迭代器的其余元素的组合来支持。
+    *         调用者必须完全使用这个迭代器，或者在其上调用' close() '，以便释放部分展开块所消耗的存储内存。
    */
   private[storage] def putIteratorAsValues[T](
       blockId: BlockId,
@@ -202,8 +210,7 @@ private[spark] class MemoryStore(
     var vector = new SizeTrackingVector[T]()(classTag)
 
     // Request enough memory to begin unrolling
-    keepUnrolling =
-      reserveUnrollMemoryForThisTask(blockId, initialMemoryThreshold, MemoryMode.ON_HEAP)
+    keepUnrolling = reserveUnrollMemoryForThisTask(blockId, initialMemoryThreshold, MemoryMode.ON_HEAP)
 
     if (!keepUnrolling) {
       logWarning(s"Failed to reserve initial memory threshold of " +
@@ -220,8 +227,7 @@ private[spark] class MemoryStore(
         val currentSize = vector.estimateSize()
         if (currentSize >= memoryThreshold) {
           val amountToRequest = (currentSize * memoryGrowthFactor - memoryThreshold).toLong
-          keepUnrolling =
-            reserveUnrollMemoryForThisTask(blockId, amountToRequest, MemoryMode.ON_HEAP)
+          keepUnrolling = reserveUnrollMemoryForThisTask(blockId, amountToRequest, MemoryMode.ON_HEAP)
           if (keepUnrolling) {
             unrollMemoryUsedByThisBlock += amountToRequest
           }
