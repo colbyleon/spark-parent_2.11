@@ -205,6 +205,8 @@ class ReliableKafkaReceiver[
   /**
    * Store the ready-to-be-stored block and commit the related offsets to zookeeper. This method
    * will try a fixed number of times to push the block. If the push fails, the receiver is stopped.
+    *
+    * 存储即将存储的块，并将相关的偏移量提交给zookeeper。这个方法将尝试固定次数来推动块。如果推送失败，接收器停止。
    */
   private def storeBlockAndCommitOffset(
       blockId: StreamBlockId, arrayBuffer: mutable.ArrayBuffer[_]): Unit = {
@@ -289,7 +291,7 @@ class ReliableKafkaReceiver[
       // Remember the offsets of topics/partitions when a block has been generated
       rememberBlockOffsets(blockId)
     }
-
+    // 存储block 并提交块偏移量
     def onPushBlock(blockId: StreamBlockId, arrayBuffer: mutable.ArrayBuffer[_]): Unit = {
       // Store block and commit the blocks offset
       storeBlockAndCommitOffset(blockId, arrayBuffer)

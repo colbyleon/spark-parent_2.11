@@ -441,6 +441,11 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
    * worker nodes as a parallel collection, and runs them.
    */
   private def launchReceivers(): Unit = {
+    /**
+      * 每次创建InputStream时会调用ssc.addInputStream()方法，也就是说有几个InputStream就有几个Receiver
+      * 与Task无关
+      * see [[org.apache.spark.streaming.dstream.InputDStream]]
+      */
     val receivers = receiverInputStreams.map { nis =>
       val rcvr = nis.getReceiver()
       rcvr.setReceiverId(nis.id)

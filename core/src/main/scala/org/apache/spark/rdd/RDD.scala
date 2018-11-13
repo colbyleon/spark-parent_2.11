@@ -431,6 +431,8 @@ abstract class RDD[T: ClassTag](
    *
    * If you are decreasing the number of partitions in this RDD, consider using `coalesce`,
    * which can avoid performing a shuffle.
+    *
+    * 如果要减少RDD中的分区数量，请考虑使用“coalesce”，这样可以避免执行shuffle。
    */
   def repartition(numPartitions: Int)(implicit ord: Ordering[T] = null): RDD[T] = withScope {
     coalesce(numPartitions, shuffle = true)
@@ -442,6 +444,8 @@ abstract class RDD[T: ClassTag](
    * This results in a narrow dependency, e.g. if you go from 1000 partitions
    * to 100 partitions, there will not be a shuffle, instead each of the 100
    * new partitions will claim 10 of the current partitions.
+    * 这将导致了一个窄依赖关系，
+    * 例如，如果从1000个分区到100个分区，将不会有一个shuffle，而是100个新分区中的每一个都会声明10个当前分区。
    *
    * However, if you're doing a drastic coalesce, e.g. to numPartitions = 1,
    * this may result in your computation taking place on fewer nodes than
@@ -449,6 +453,9 @@ abstract class RDD[T: ClassTag](
    * you can pass shuffle = true. This will add a shuffle step, but means the
    * current upstream partitions will be executed in parallel (per whatever
    * the current partitioning is).
+    * 然而，如果你正在做一个剧烈的合并，例如numPartitions = 1，
+    * 这可能导致你的计算发生在比你想要的节点更少的节点上(例如numpartition = 1的情况下只有一个节点)。
+    * 这将添加一个shuffle步骤，但意味着当前的上游分区将并行执行(无论当前分区是什么)。
    *
    * @note With shuffle = true, you can actually coalesce to a larger number
    * of partitions. This is useful if you have a small number of partitions,
@@ -456,6 +463,10 @@ abstract class RDD[T: ClassTag](
    * coalesce(1000, shuffle = true) will result in 1000 partitions with the
    * data distributed using a hash partitioner. The optional partition coalescer
    * passed in must be serializable.
+    * 使用shuffle = true时，您实际上可以合并到更多的分区。
+    * 如果您有少量的分区(比如100个)，可能有一些分区非常大，那么这是非常有用的。
+    * 调用coalesce(1000, shuffle = true)将产生1000个分区，使用散列分区器分发数据。
+    * 传入的可选分区合并器必须是可序列化的。
    */
   def coalesce(numPartitions: Int, shuffle: Boolean = false,
                partitionCoalescer: Option[PartitionCoalescer] = Option.empty)

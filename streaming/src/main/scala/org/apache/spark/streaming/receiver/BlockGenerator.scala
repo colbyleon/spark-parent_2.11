@@ -54,6 +54,11 @@ private[streaming] trait BlockGeneratorListener {
    * Spark in this method. Internally this is called from a single
    * thread, that is not synchronized with any other callbacks. Hence it is okay to do long
    * blocking operation in this callback.
+    *
+    * 当一个新块准备被推送时调用。
+    * 调用者应该使用这种方法将块存储到Spark中。
+    * 在内部，这是从单个线程调用的，该线程不与任何其他回调同步。
+    * 因此，在这个回调中执行长时间阻塞操作是可以的。
    */
   def onPushBlock(blockId: StreamBlockId, arrayBuffer: ArrayBuffer[_]): Unit
 
@@ -70,6 +75,10 @@ private[streaming] trait BlockGeneratorListener {
  * named blocks at regular intervals. This class starts two threads,
  * one to periodically start a new batch and prepare the previous batch of as a block,
  * the other to push the blocks into the block manager.
+  *
+  * 生成由receiver接收的批量对象。
+  * 并将它们按规则间隔放入适当命名的块中。
+  * 这个类启动两个线程，一个线程定期启动一个新的批处理并将前一批作为一个块准备，另一个线程将这些块推入块管理器。
  *
  * Note: Do not create BlockGenerator instances directly inside receivers. Use
  * `ReceiverSupervisor.createBlockGenerator` to create a BlockGenerator and use it.
@@ -100,15 +109,20 @@ private[streaming] class BlockGenerator(
   }
   import GeneratorState._
 
+  // block interval 默认是200ms
   private val blockIntervalMs = conf.getTimeAsMs("spark.streaming.blockInterval", "200ms")
   require(blockIntervalMs > 0, s"'spark.streaming.blockInterval' should be a positive value")
-
+  // 每隔 blockIntervalMs 就去调用一个函数，updateCurrentBuffer函数
   private val blockIntervalTimer =
     new RecurringTimer(clock, blockIntervalMs, updateCurrentBuffer, "BlockGenerator")
+  // 默认大小10个，如果批间隔设的很长的话可以调大点吧
   private val blockQueueSize = conf.getInt("spark.streaming.blockQueueSize", 10)
   private val blocksForPushing = new ArrayBlockingQueue[Block](blockQueueSize)
+  // 后台线程，启动后会调用keepPushingBlocks方法
+  // 这个方法会每隔一段时间去blockForPushing队列中取block
   private val blockPushingThread = new Thread() { override def run() { keepPushingBlocks() } }
 
+  // 用于存放原始的数据
   @volatile private var currentBuffer = new ArrayBuffer[Any]
   @volatile private var state = Initialized
 
@@ -235,15 +249,18 @@ private[streaming] class BlockGenerator(
       var newBlock: Block = null
       synchronized {
         if (currentBuffer.nonEmpty) {
+          // 直接清空currentBuffer,赋值一个新的ArrayBuffer
           val newBlockBuffer = currentBuffer
           currentBuffer = new ArrayBuffer[Any]
           val blockId = StreamBlockId(receiverId, time - blockIntervalMs)
           listener.onGenerateBlock(blockId)
+          // 创建一个block
           newBlock = new Block(blockId, newBlockBuffer)
         }
       }
 
       if (newBlock != null) {
+        // 将block推送到队列，队列长度是可以调节的
         blocksForPushing.put(newBlock)  // put is blocking when queue is full
       }
     } catch {
@@ -265,6 +282,7 @@ private[streaming] class BlockGenerator(
     try {
       // While blocks are being generated, keep polling for to-be-pushed blocks and push them.
       while (areBlocksBeingGenerated) {
+        // 从队首取block，pushBlock
         Option(blocksForPushing.poll(10, TimeUnit.MILLISECONDS)) match {
           case Some(block) => pushBlock(block)
           case None =>

@@ -60,6 +60,18 @@ import org.apache.spark.util.{CallSite, ShutdownHookManager, ThreadUtils, Utils}
  * `context.awaitTermination()` allows the current thread to wait for the termination
  * of the context by `stop()` or by an exception.
  */
+
+/**
+  * 在创建和完成StreamContext的初始化之后，创建了DStreamGraph、JobScheduler等关键组件之后
+  * 就会调用StreamContext的socketTextStream等方法,来创建输入DStream
+  * 然后针对输入DStream执行一系列的transformation等操作
+  * 最后会执行一个output输出操作，来触发针对一个一个的batch的job的触发和执行
+  *
+  * 上述初始化操作完成之后调用start()
+  * 会创建StreamingContext的两个重要组件:ReceiverTracker JobGenerator
+  * 另外最重要的是启动整个spark Streaming 应用程序的输入DStream对应的Receiver
+  * 注意，是在Spark集群的某个Worker节点上的Executor中启动的
+  */
 class StreamingContext private[streaming] (
     _sc: SparkContext,
     _cp: Checkpoint,
@@ -152,6 +164,9 @@ class StreamingContext private[streaming] (
 
   private[streaming] val env = sc.env
 
+  /**
+    * 这里保存了我们定义的各个算子之间的关系
+    */
   private[streaming] val graph: DStreamGraph = {
     if (isCheckpointPresent) {
       _cp.graph.setContext(this)
@@ -179,7 +194,10 @@ class StreamingContext private[streaming] (
   private[streaming] val checkpointDuration: Duration = {
     if (isCheckpointPresent) _cp.checkpointDuration else graph.batchDuration
   }
-
+  /**
+    * JobGenerator负责每隔batch interval 生成一个job,然后通过JobScheduler提交job
+    * 底层还是基于spark的核心计算引擎
+    */
   private[streaming] val scheduler = new JobScheduler(this)
 
   private[streaming] val waiter = new ContextWaiter
@@ -297,7 +315,7 @@ class StreamingContext private[streaming] (
   def socketTextStream(
       hostname: String,
       port: Int,
-      storageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK_SER_2
+      storageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK_SER_2 // 默认会复制一份到其它BlockManager
     ): ReceiverInputDStream[String] = withNamedScope("socket text stream") {
     socketStream[String](hostname, port, SocketReceiver.bytesToLines, storageLevel)
   }
@@ -580,6 +598,7 @@ class StreamingContext private[streaming] (
               sparkContext.clearJobGroup()
               sparkContext.setLocalProperty(SparkContext.SPARK_JOB_INTERRUPT_ON_CANCEL, "false")
               savedProperties.set(SerializationUtils.clone(sparkContext.localProperties.get()))
+              // 关键的一部
               scheduler.start()
             }
             state = StreamingContextState.ACTIVE

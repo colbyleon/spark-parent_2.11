@@ -83,6 +83,7 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
     } ssc.addStreamingListener(rateController)
 
     listenerBus.start()
+    // 创建了很重要的一个组件，数据接收相关
     receiverTracker = new ReceiverTracker(ssc)
     inputInfoTracker = new InputInfoTracker(ssc)
 
